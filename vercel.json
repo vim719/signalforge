@@ -1,0 +1,15 @@
+{
+  "version": 2,
+  "builds": [
+    { "src": "src/api/server.js", "use": "@vercel/node" },
+    { "src": "src/queue/*.js", "use": "@vercel/node" },
+    { "src": "src/telegram/*.js", "use": "@vercel/node" },
+    { "src": "src/keeperhub/*.js", "use": "@vercel/node" }
+  ],
+  "routes": [
+    { "src": "/api/(.*)", "dest": "/src/api/server.js" },
+    { "src": "/queue/(.*)", "dest": "/src/queue/redis-client.js" },
+    { "src": "/telegram/(.*)", "dest": "/src/telegram/bot.js" },
+    { "src": "/keeperhub/(.*)", "dest": "/src/keeperhub/service.js" }
+  ]
+}
