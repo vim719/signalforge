@@ -92,5 +92,6 @@ app.get('/queue/length', async (req, res) => {
   }
 });
 
-// Line65: Export app for testing and server start
-module.exports = { app };
+// Line65: Export app for testing and Vercel serverless
+// Vercel needs module.exports = expressApp (not { app })
+module.exports = app;

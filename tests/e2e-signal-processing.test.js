@@ -10,8 +10,9 @@ const { executeSignal: executeSignalService } = require('../src/keeperhub/servic
 // Line7: Import Redis client for queue operations
 const { enqueue, dequeue, getQueueHealth } = require('../src/queue/redis-client');
 
-// Line10: Check if 0G API key is available (not the example key)
-const has0GApiKey = process.env.OG_AI_API_KEY && process.env.OG_AI_API_KEY !== 'sk-2fb88b18-c4e6-4a26-8f71-199357a6bb67' && process.env.OG_AI_API_KEY.length > 20;
+// Line10: Check if 0G API key is available (Vercel uses ZERO_G_AI_API_KEY, local uses 0G_AI_API_KEY)
+const zeroGKey = process.env.ZERO_G_AI_API_KEY || process.env.0G_AI_API_KEY;
+const has0GApiKey = zeroGKey && zeroGKey.length > 20;
 
 // Line14: Skip tests if no real API key
 const describeOrSkip = has0GApiKey ? describe : describe.skip;
