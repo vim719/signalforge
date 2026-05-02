@@ -3,8 +3,9 @@
 
 module.exports = {
   // 0G Compute (agent brain)
+  // Note: Vercel doesn't allow env vars starting with digit, so we use ZERO_G_AI_API_KEY there
   compute: {
-    apiKey: process.env.OG_AI_API_KEY || 'sk-2fb88b18-c4e6-4a26-8f71-199357a6bb67',
+    apiKey: process.env.ZERO_G_AI_API_KEY || process.env.OG_AI_API_KEY || 'sk-2fb88b18-c4e6-4a26-8f71-199357a6bb67',
     model: '0g-lite', // or '0g-pro' for complex tasks
     maxTokens: 2000,
     temperature: 0.7,
