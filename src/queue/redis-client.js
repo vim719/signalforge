@@ -4,11 +4,17 @@ require('dotenv').config();
 const Redis = require('ioredis');
 
 // Line 2: Create Redis client using env vars (defaults: localhost:6379)
-const client = new Redis({
-  host: process.env.REDIS_HOST || 'localhost',
-  port: process.env.REDIS_PORT || 6379,
-  lazyConnect: true
-});
+// Use rediss:// URL for Redis Cloud (TLS) or individual params for local
+const redisUrl = process.env.REDIS_URL;
+const client = redisUrl
+  ? new Redis(redisUrl)
+  : new Redis({
+      host: process.env.REDIS_HOST || 'localhost',
+      port: process.env.REDIS_PORT || 6379,
+      password: process.env.REDIS_PASSWORD,
+      tls: process.env.REDIS_TLS === 'true' ? {} : undefined,
+      lazyConnect: true
+    });
 
 // Line 3: Queue key prefix for namespace isolation
 const QUEUE_KEY = 'signalforge:queue';

@@ -92,6 +92,17 @@ app.get('/queue/length', async (req, res) => {
   }
 });
 
+// Line63: Debug endpoint — check env vars (remove after debugging)
+app.get('/debug/env', (req, res) => {
+  res.json({
+    redis_url: process.env.REDIS_URL ? 'set' : 'missing',
+    redis_host: process.env.REDIS_HOST || 'missing',
+    redis_port: process.env.REDIS_PORT || 'missing',
+    redis_password: process.env.REDIS_PASSWORD ? 'set' : 'missing',
+    redis_tls: process.env.REDIS_TLS || 'missing',
+  });
+});
+
 // Line65: Export app for testing and Vercel serverless
 // Vercel needs module.exports = expressApp (not { app })
 module.exports = app;
