@@ -1,49 +1,44 @@
-// redis-client.js — Fixed for Redis Cloud
+// redis-client.js — Lazy Redis connection for Railway
 require('dotenv').config();
 const Redis = require('ioredis');
 
-// Build Redis config for Redis Cloud (redislabs)
-function getRedisConfig() {
+let client = null;
+
+function getClient() {
+  if (client) return client;
+  
   const host = process.env.REDIS_HOST;
   const port = process.env.REDIS_PORT;
   const password = process.env.REDIS_PASSWORD;
   
-  // Redis Cloud (redislabs) — use rediss:// with default username
-  if (host && host.includes('redislabs')) {
-    const encodedPass = encodeURIComponent(password);
-    const url = `rediss://default:${encodedPass}@${host}:${port}`;
-    console.log('Redis URL:', url.replace(encodedPass, '***'));
-    return url;
-  }
-  
-  // Redis Cloud without redislabs in host — try the same
+  // Redis Cloud — use rediss:// with default username
   if (host && port && password) {
     const encodedPass = encodeURIComponent(password);
     const url = `rediss://default:${encodedPass}@${host}:${port}`;
-    console.log('Redis URL:', url.replace(encodedPass, '***'));
-    return url;
+    console.log('Redis connecting to:', url.replace(encodedPass, '***'));
+    client = new Redis(url, { lazyConnect: true });
+  } else {
+    // Local Redis or fallback
+    client = new Redis({
+      host: host || 'localhost',
+      port: parseInt(port) || 6379,
+      password: password || undefined,
+      lazyConnect: true
+    });
   }
   
-  // Local Redis
-  return {
-    host: host || 'localhost',
-    port: parseInt(port) || 6379,
-    password: password || undefined,
-    tls: process.env.REDIS_TLS === 'true' ? {} : undefined,
-    lazyConnect: true
-  };
+  client.on('error', (err) => console.error('Redis Error:', err.message));
+  client.on('connect', () => console.log('Redis connected'));
+  
+  return client;
 }
-
-const client = new Redis(getRedisConfig());
-
-client.on('error', (err) => console.error('Redis Error:', err.message));
-client.on('connect', () => console.log('Redis connected'));
 
 const QUEUE_KEY = 'signalforge:queue';
 const DLQ_KEY = 'signalforge:dlq';
 const HEALTH_KEY = 'signalforge:health';
 
 async function enqueue(signal, options = {}) {
+  const client = getClient();
   if (!signal || typeof signal !== 'object') throw new Error('Missing required fields');
   const { token, action, price } = signal;
   if (!token || !action || price === undefined) throw new Error('Missing required fields');
@@ -65,6 +60,7 @@ async function enqueue(signal, options = {}) {
 }
 
 async function dequeue() {
+  const client = getClient();
   const raw = await client.rpop(QUEUE_KEY);
   if (!raw) return null;
     
@@ -79,10 +75,12 @@ async function dequeue() {
 }
 
 async function getQueueLength() {
+  const client = getClient();
   return await client.llen(QUEUE_KEY);
 }
 
 async function getQueueHealth() {
+  const client = getClient();
   const raw = await client.hgetall(HEALTH_KEY);
   const length = await getQueueLength();
     
