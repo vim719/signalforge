@@ -106,3 +106,15 @@ app.get('/debug/env', (req, res) => {
 // Line65: Export app for testing and Vercel serverless
 // Vercel needs module.exports = expressApp (not { app })
 module.exports = app;
+
+// Line68: Telegram webhook endpoint for Railway deployment
+app.post('/telegram-webhook', async (req, res) => {
+  try {
+    const bot = require('../src/telegram/bot');
+    await bot.handleUpdate(req.body);
+    res.status(200).send('OK');
+  } catch (err) {
+    console.error('Telegram webhook error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
