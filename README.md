@@ -98,8 +98,8 @@ Copy `.env.example` to `.env` and fill in:
 | `KEEPERHUB_API_URL` | KeeperHub API endpoint |
 | `KEEPERHUB_API_KEY` | KeeperHub API key (kh_...) |
 | `OG_AI_API_KEY` | 0G.ai agent brain API key (sk-...) |
-| `REDIS_HOST` | Redis cloud host (redis-16706.c15.us-east-1-2.ec2.cloud.redislabs.com) |
-| `REDIS_PORT` | Redis port (16706) |
+| `REDIS_HOST` | Redis cloud host  |
+| `REDIS_PORT` | Redis port |
 | `REDIS_PASSWORD` | Redis password |
 
 ## Testing
