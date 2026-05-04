@@ -210,9 +210,9 @@ signalforge/
 
 MIT
 
-## Hackathon Context
+## MVP Context
 
-Built for **38-hour hackathon** using:
+Built within **38-hour** using:
 - **Approach A++**: Lean Relay + KeeperHub + 0G agent
 - **TDD Workflow**: Phase1 Baseline → Phase2 Test Gen → Phase3 Implementation → Phase4 Regression
 - **Zero-regression principle**: Every bug gets a test, every feature gets coverage
