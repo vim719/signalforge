@@ -124,5 +124,13 @@ app.post('/telegram-webhook', async (req, res) => {
 // Line75: Start server for Railway deployment
 const PORT = process.env.PORT || 3000;
 if (require.main === module) {
-  app.listen(PORT, () => console.log(`Server listening on port ${PORT}`));
+  console.log('Starting server on port', PORT);
+  console.log('Redis Host:', process.env.REDIS_HOST ? 'set' : 'missing');
+  console.log('Redis Port:', process.env.REDIS_PORT || 'default');
+  console.log('Redis Password:', process.env.REDIS_PASSWORD ? 'set' : 'missing');
+  
+  app.listen(PORT, () => {
+    console.log(`Server listening on port ${PORT}`);
+    console.log('Server started successfully');
+  });
 }
