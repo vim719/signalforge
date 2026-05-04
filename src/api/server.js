@@ -103,14 +103,16 @@ app.get('/debug/env', (req, res) => {
   });
 });
 
-// Line65: Export app for testing and Vercel serverless
+// Line65: Import bot for telegram webhook
+const bot = require('../telegram/bot');
+
+// Line67: Export app for testing and Vercel serverless
 // Vercel needs module.exports = expressApp (not { app })
 module.exports = app;
 
-// Line68: Telegram webhook endpoint for Railway deployment
+// Line70: Telegram webhook endpoint for Railway deployment
 app.post('/telegram-webhook', async (req, res) => {
   try {
-    const bot = require('../src/telegram/bot');
     await bot.handleUpdate(req.body);
     res.status(200).send('OK');
   } catch (err) {
@@ -118,3 +120,9 @@ app.post('/telegram-webhook', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// Line75: Start server for Railway deployment
+const PORT = process.env.PORT || 3000;
+if (require.main === module) {
+  app.listen(PORT, () => console.log(`Server listening on port ${PORT}`));
+}
