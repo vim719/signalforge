@@ -4,6 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "start": "node -e \"const app = require('./src/api/server'); const port = process.env.PORT || 3001; app.listen(port, () => console.log('SignalForge listening on port ' + port));\"",
     "test": "jest --coverage"
   },
   "keywords": [],
