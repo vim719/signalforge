@@ -1,116 +1,227 @@
-// src/telegram/bot.js — Phase3: Implementation (TDD)
-// Line1: Import telegraf for Telegram Bot API
+// src/telegram/bot.js — SignalForge Telegram Bot
 const { Telegraf } = require('telegraf');
+const { enqueue, dequeue, getQueueLength, getQueueHealth } = require('../queue/redis-client');
+const { getStatus } = require('../keeperhub/client');
 
-// Line3: Import queue functions for signal handling
-const { enqueue, dequeue, getQueueLength } = require('../queue/redis-client');
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+if (!BOT_TOKEN) {
+  console.warn('TELEGRAM_BOT_TOKEN not set — Telegram bot will not function');
+}
 
-// Line6: Bot token from environment variable
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || 'mock-token';
+const bot = new Telegraf(BOT_TOKEN || 'dummy-token');
 
-// Line9: Create bot instance
-const bot = new Telegraf(BOT_TOKEN);
+// In-memory store for active chat IDs (for broadcasting notifications)
+const activeChats = new Set();
 
-// Line12: /signal command — submit signal via Telegram
+// Helper: safely reply with error handling
+async function safeReply(ctx, text, extra) {
+  try {
+    if (extra) return await ctx.reply(text, extra);
+    return await ctx.reply(text);
+  } catch (err) {
+    console.error('Telegram reply error:', err.message);
+  }
+}
+
+// /start — welcome message
+bot.command('start', async (ctx) => {
+  if (ctx.chat) activeChats.add(ctx.chat.id);
+  const welcome = [
+    '👋 Welcome to SignalForge!',
+    '',
+    'Autonomous Execution Layer for Crypto Signals',
+    '',
+    'Commands:',
+    '/signal <token> <action> <price> — Submit a trading signal',
+    '/status — Check system status',
+    '/queue — Show queue depth',
+    '/alert — Peek next signal in queue',
+    '/positions — View mock positions',
+    '/lasttrade — View last trade',
+    '/help — Show this help',
+  ].join('\n');
+  await safeReply(ctx, welcome);
+});
+
+// /help — help message
+bot.command('help', async (ctx) => {
+  if (ctx.chat) activeChats.add(ctx.chat.id);
+  const help = [
+    '🛠 SignalForge Commands:',
+    '',
+    '/signal <token> <action> <price> — Submit a trading signal',
+    '/status — Check system & Redis health',
+    '/queue — Show current queue depth',
+    '/alert — Peek next signal from queue',
+    '/positions — View mock positions',
+    '/lasttrade — View last trade info',
+    '/start — Welcome & register chat',
+  ].join('\n');
+  await safeReply(ctx, help);
+});
+
+// /status — system health
+bot.command('status', async (ctx) => {
+  if (ctx.chat) activeChats.add(ctx.chat.id);
+  try {
+    const health = await getQueueHealth();
+    const keeper = await getStatus();
+    const statusText = [
+      '📊 SignalForge Status',
+      '',
+      `Redis: ${health.redisConnected ? '✅ Connected' : '⚠️ Disconnected'}`,
+      health.redisError ? `Redis Error: ${health.redisError}` : '',
+      `Queue Length: ${health.length}`,
+      `Queue Status: ${health.status}`,
+      `Total Enqueued: ${health.totalEnqueued}`,
+      `Total Processed: ${health.totalProcessed}`,
+      '',
+      `KeeperHub: ${keeper.status || 'unknown'}`,
+    ].join('\n');
+    await safeReply(ctx, statusText);
+  } catch (err) {
+    await safeReply(ctx, `⚠️ Status check failed: ${err.message}`);
+  }
+});
+
+// /signal — submit signal
 bot.command('signal', async (ctx) => {
-  // Line14: Parse command arguments: /signal <token> <action> <price>
+  if (ctx.chat) activeChats.add(ctx.chat.id);
   const messageText = ctx.message.text || '';
   const parts = messageText.split(' ').filter((p) => p);
 
-  // Line18: Validate format: need at least 4 parts (/signal, token, action, price)
   if (parts.length < 4) {
-    return ctx.reply('Invalid format. Use: /signal <token> <action> <price>');
+    return safeReply(ctx, 'Invalid format. Use: /signal <token> <action> <price>');
   }
 
   const [, token, action, priceStr] = parts;
   const price = parseFloat(priceStr);
 
-  // Line26: Validate inputs
   if (!token || !action || isNaN(price)) {
-    return ctx.reply('Invalid format. Use: /signal <token> <action> <price>');
+    return safeReply(ctx, 'Invalid format. Use: /signal <token> <action> <price>');
   }
 
-  // Line30: Create signal object
   const signal = { token, action: action.toUpperCase(), price };
 
   try {
-    // Line33: Enqueue the signal
     const result = await enqueue(signal);
-    // Line35: Reply with success
-    ctx.reply(`Signal queued! Token: ${result.token}, Action: ${signal.action}`);
+    await safeReply(ctx, `✅ Signal queued!\nToken: ${result.token}\nAction: ${signal.action}\nPrice: ${signal.price}`);
   } catch (err) {
-    // Line38: Reply with error
-    ctx.reply(`Error: ${err.message}`);
+    await safeReply(ctx, `❌ Error: ${err.message}`);
   }
 });
 
-// Line42: /alert command — send alert with next signal from queue
+// /alert — peek next signal
 bot.command('alert', async (ctx) => {
+  if (ctx.chat) activeChats.add(ctx.chat.id);
   try {
-    // Line45: Dequeue next signal
     const signal = await dequeue();
-
-    // Line47: If no signal, reply accordingly
     if (!signal) {
-      return ctx.reply('Queue is empty. No signals to alert.');
+      return safeReply(ctx, 'Queue is empty. No signals to alert.');
     }
-
-    // Line51: Send alert with signal data
-    ctx.reply(
-      `🚨 Signal Alert!\nToken: ${signal.token}\nAction: ${signal.action}\nPrice: ${signal.price}`
-    );
+    await safeReply(ctx, `🚨 Signal Alert!\nToken: ${signal.token}\nAction: ${signal.action}\nPrice: ${signal.price}`);
   } catch (err) {
-    // Line56: Reply with error
-    ctx.reply(`Error: ${err.message}`);
+    await safeReply(ctx, `❌ Error: ${err.message}`);
   }
 });
 
-// Line60: /queue command — show current queue status
+// /queue — queue depth
 bot.command('queue', async (ctx) => {
+  if (ctx.chat) activeChats.add(ctx.chat.id);
   try {
-    // Line63: Get queue length
     const length = await getQueueLength();
-    // Line65: Reply with queue length
-    ctx.reply(`Current queue length: ${length}`);
+    await safeReply(ctx, `📦 Current queue length: ${length}`);
   } catch (err) {
-    // Line67: Reply with error
-    ctx.reply(`Error: ${err.message}`);
+    await safeReply(ctx, `❌ Error: ${err.message}`);
   }
 });
 
-// Line71: Inline keyboard action — handle BUY/SELL actions
+// /positions — mock positions
+bot.command('positions', async (ctx) => {
+  if (ctx.chat) activeChats.add(ctx.chat.id);
+  const positions = [
+    { token: 'PEPE', action: 'BUY', entry: 0.00001, size: 1000000, pnl: '+12.5%' },
+    { token: 'BONK', action: 'BUY', entry: 0.00002, size: 500000, pnl: '-3.2%' },
+  ];
+  const text = [
+    '📈 Mock Positions',
+    '',
+    ...positions.map(p => `• ${p.token} | ${p.action} | ${p.size} | ${p.pnl}`),
+    '',
+    '(This is demo data — real positions require onchain wallet integration)',
+  ].join('\n');
+  await safeReply(ctx, text);
+});
+
+// /lasttrade — last trade
+bot.command('lasttrade', async (ctx) => {
+  if (ctx.chat) activeChats.add(ctx.chat.id);
+  const text = [
+    '🔄 Last Trade',
+    '',
+    'Token: PEPE',
+    'Action: BUY',
+    'Price: 0.00001',
+    'Size: 1,000,000',
+    'Tx Hash: 0xabc123...',
+    'Status: ✅ Executed',
+    'Time: 2026-05-04T19:30:00Z',
+    '',
+    '(This is demo data)',
+  ].join('\n');
+  await safeReply(ctx, text);
+});
+
+// Inline keyboard actions
 bot.action(/BUY:(.+):(.+)/, async (ctx) => {
-  // Line73: Parse action data: BUY:<token>:<price>
   const match = ctx.match;
   const token = match[1];
   const price = parseFloat(match[2]);
-
-  // Line77: Create signal and enqueue
   const signal = { token, action: 'BUY', price };
   await enqueue(signal);
-
-  // Line80: Answer callback query
   await ctx.answerCbQuery('BUY signal sent!');
-  // Line82: Reply with confirmation
-  await ctx.reply(`BUY signal for ${token} sent!`);
+  await safeReply(ctx, `✅ BUY signal for ${token} sent!`);
 });
 
-// Line86: Inline keyboard action — handle SELL actions
 bot.action(/SELL:(.+):(.+)/, async (ctx) => {
-  // Line88: Parse action data: SELL:<token>:<price>
   const match = ctx.match;
   const token = match[1];
   const price = parseFloat(match[2]);
-
-  // Line92: Create signal and enqueue
   const signal = { token, action: 'SELL', price };
   await enqueue(signal);
-
-  // Line95: Answer callback query
   await ctx.answerCbQuery('SELL signal sent!');
-  // Line97: Reply with confirmation
-  await ctx.reply(`SELL signal for ${token} sent!`);
+  await safeReply(ctx, `✅ SELL signal for ${token} sent!`);
 });
 
-// Line101: Export bot for testing and launching
+// Notification helpers called by server
+async function notifySignalReceived(signal) {
+  const text = `📡 Signal Received\nToken: ${signal.token}\nAction: ${signal.action}\nPrice: ${signal.price}`;
+  for (const chatId of activeChats) {
+    try {
+      await bot.telegram.sendMessage(chatId, text);
+    } catch (err) {
+      console.error(`Failed to notify chat ${chatId}:`, err.message);
+    }
+  }
+}
+
+async function notifyTradeExecuted(result) {
+  const text = [
+    '✅ Trade Executed',
+    `Token: ${result.token}`,
+    `Action: ${result.action}`,
+    `Tx Hash: ${result.txId || 'N/A'}`,
+  ].join('\n');
+  for (const chatId of activeChats) {
+    try {
+      await bot.telegram.sendMessage(chatId, text);
+    } catch (err) {
+      console.error(`Failed to notify chat ${chatId}:`, err.message);
+    }
+  }
+}
+
 module.exports = bot;
+module.exports.notifySignalReceived = notifySignalReceived;
+module.exports.notifyTradeExecuted = notifyTradeExecuted;
+module.exports.activeChats = activeChats;

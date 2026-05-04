@@ -1,11 +1,11 @@
 // src/api/server.js — Phase3: Implementation (TDD)
-// Line1: Import express for HTTP server
+require('dotenv').config();
 const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 
-// Line2: Import queue functions for enqueue and health checks
+// Import queue functions for enqueue and health checks
 const { enqueue, getQueueHealth, getQueueLength } = require('../queue/redis-client');
 
 // Line5: Create express app instance
@@ -56,26 +56,30 @@ app.post('/webhook', authMiddleware, async (req, res) => {
   }
 
   try {
-    // Line32: Enqueue the signal
     const result = await enqueue(signal);
-    // Line34: Return success response
+    // Notify Telegram subscribers
+    notifySignalReceived(signal).catch((err) => console.error('Telegram notify error:', err.message));
     res.status(200).json(result);
   } catch (err) {
-    // Line37: Return error if enqueue fails
     res.status(500).json({ error: err.message });
   }
 });
 
-// Line41: GET /health — return queue health status
+// GET /health — return queue health status (always 200 so Railway doesn't kill us)
 app.get('/health', async (req, res) => {
   try {
-    // Line44: Fetch health from queue module
     const health = await getQueueHealth();
-    // Line46: Return health object
     res.status(200).json(health);
   } catch (err) {
-    // Line49: Return error if health check fails
-    res.status(500).json({ error: err.message });
+    res.status(200).json({
+      status: 'degraded',
+      redisConnected: false,
+      redisError: err.message,
+      length: 0,
+      totalEnqueued: 0,
+      totalProcessed: 0,
+      lastEnqueueAt: null
+    });
   }
 });
 
@@ -103,34 +107,57 @@ app.get('/debug/env', (req, res) => {
   });
 });
 
-// Line65: Import bot for telegram webhook
+// Import bot for telegram webhook and notifications
 const bot = require('../telegram/bot');
+const { notifySignalReceived, notifyTradeExecuted } = require('../telegram/bot');
 
-// Line67: Export app for testing and Vercel serverless
-// Vercel needs module.exports = expressApp (not { app })
-module.exports = app;
-
-// Line70: Telegram webhook endpoint for Railway deployment
+// Telegram webhook endpoint for Railway deployment
 app.post('/telegram-webhook', async (req, res) => {
   try {
     await bot.handleUpdate(req.body);
     res.status(200).send('OK');
   } catch (err) {
     console.error('Telegram webhook error:', err);
-    res.status(500).json({ error: err.message });
+    res.status(200).send('OK'); // Always return 200 to Telegram
   }
 });
 
-// Line75: Start server for Railway deployment
+// Serve static frontend files
+const path = require('path');
+app.use(express.static(path.join(__dirname, '../../public')));
+
+// Fallback to index.html for SPA routes
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, '../../public', 'index.html'));
+});
+
+// Export app for testing and Vercel serverless
+module.exports = app;
+
+// Start server for Railway deployment
 const PORT = process.env.PORT || 3000;
 if (require.main === module) {
-  console.log('Starting server on port', PORT);
+  console.log('Starting SignalForge server on port', PORT);
   console.log('Redis Host:', process.env.REDIS_HOST ? 'set' : 'missing');
   console.log('Redis Port:', process.env.REDIS_PORT || 'default');
   console.log('Redis Password:', process.env.REDIS_PASSWORD ? 'set' : 'missing');
-  
-  app.listen(PORT, () => {
+  console.log('Redis TLS:', process.env.REDIS_TLS || 'false (default)');
+
+  const server = app.listen(PORT, async () => {
     console.log(`Server listening on port ${PORT}`);
     console.log('Server started successfully');
+
+    // Set Telegram webhook if URL is configured
+    const webhookUrl = process.env.TELEGRAM_WEBHOOK_URL;
+    if (webhookUrl && process.env.TELEGRAM_BOT_TOKEN) {
+      try {
+        await bot.telegram.setWebhook(webhookUrl);
+        console.log('Telegram webhook set to:', webhookUrl);
+      } catch (err) {
+        console.error('Failed to set Telegram webhook:', err.message);
+      }
+    } else {
+      console.log('TELEGRAM_WEBHOOK_URL not set, skipping webhook registration');
+    }
   });
 }

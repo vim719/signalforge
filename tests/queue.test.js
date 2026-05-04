@@ -58,6 +58,9 @@ jest.mock('ioredis', () => {
       connect: jest.fn(async () => 'OK'),
       quit: jest.fn(async () => 'OK'),
       disconnect: jest.fn(async () => 'OK'),
+      on: jest.fn(),
+      once: jest.fn(),
+      off: jest.fn(),
     };
   };
 

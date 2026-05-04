@@ -3,7 +3,7 @@
   "build": {
     "builder": "NIXPACKS",
     "buildCommand": "npm install --omit=dev",
-    "watchPatterns": ["src/**/*", "package.json", "package-lock.json"]
+    "watchPatterns": ["src/**/*", "public/**/*", "package.json", "package-lock.json"]
   },
   "deploy": {
     "startCommand": "npm start",

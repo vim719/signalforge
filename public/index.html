@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SignalForge — Autonomous Execution Layer</title>
+  <style>
+    :root {
+      --bg: #0b0e11;
+      --card: #151a21;
+      --border: #232a33;
+      --text: #e1e8ed;
+      --muted: #8b9aad;
+      --accent: #00d084;
+      --accent-dim: rgba(0, 208, 132, 0.12);
+      --danger: #ff4757;
+      --warn: #ffa502;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      line-height: 1.5;
+    }
+    .container { max-width: 960px; margin: 0 auto; padding: 24px; }
+    header { text-align: center; margin-bottom: 32px; }
+    header h1 { margin: 0; font-size: 2rem; letter-spacing: -0.5px; }
+    header p { margin: 6px 0 0; color: var(--muted); }
+    .badge {
+      display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 0.75rem; font-weight: 600;
+      background: var(--accent-dim); color: var(--accent); border: 1px solid rgba(0,208,132,0.25);
+    }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px;
+    }
+    .card h3 { margin: 0 0 12px; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); }
+    .metric { font-size: 1.8rem; font-weight: 700; margin: 0; }
+    .status-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+    .status-healthy { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+    .status-degraded { background: var(--warn); box-shadow: 0 0 8px var(--warn); }
+    .status-critical { background: var(--danger); box-shadow: 0 0 8px var(--danger); }
+    .form { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 10px; align-items: end; }
+    input, button, select {
+      background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 10px 12px; font-size: 0.95rem;
+    }
+    input:focus, select:focus { outline: none; border-color: var(--accent); }
+    button {
+      background: var(--accent); color: #0b0e11; border: none; font-weight: 700; cursor: pointer;
+    }
+    button:hover { filter: brightness(1.1); }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 600; text-transform: uppercase; font-size: 0.75rem; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.85rem; }
+    .txhash { color: var(--accent); }
+    .action-buy { color: var(--accent); font-weight: 700; }
+    .action-sell { color: var(--danger); font-weight: 700; }
+    .toast {
+      position: fixed; bottom: 20px; right: 20px; padding: 12px 16px; border-radius: 8px; color: #fff; font-weight: 600;
+      transform: translateY(100px); opacity: 0; transition: all 0.3s ease; z-index: 1000;
+    }
+    .toast.show { transform: translateY(0); opacity: 1; }
+    .toast.ok { background: var(--accent); }
+    .toast.err { background: var(--danger); }
+    .empty { color: var(--muted); text-align: center; padding: 24px; }
+    @media (max-width: 640px) {
+      .form { grid-template-columns: 1fr; }
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>SignalForge</h1>
+      <p>Autonomous Execution Layer for Crypto Signals</p>
+      <span class="badge" id="systemBadge">Checking...</span>
+    </header>
+
+    <div class="grid">
+      <div class="card">
+        <h3>Redis Status</h3>
+        <p id="redisStatus">Loading...</p>
+      </div>
+      <div class="card">
+        <h3>Queue Depth</h3>
+        <p class="metric" id="queueLength">-</p>
+      </div>
+      <div class="card">
+        <h3>Total Enqueued</h3>
+        <p class="metric" id="totalEnqueued">-</p>
+      </div>
+      <div class="card">
+        <h3>Total Processed</h3>
+        <p class="metric" id="totalProcessed">-</p>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom: 24px;">
+      <h3>Submit Signal</h3>
+      <form id="signalForm" class="form">
+        <div>
+          <label style="display:block; margin-bottom:6px; color:var(--muted); font-size:0.85rem;">Token</label>
+          <input type="text" id="token" placeholder="PEPE" required />
+        </div>
+        <div>
+          <label style="display:block; margin-bottom:6px; color:var(--muted); font-size:0.85rem;">Action</label>
+          <select id="action">
+            <option value="BUY">BUY</option>
+            <option value="SELL">SELL</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block; margin-bottom:6px; color:var(--muted); font-size:0.85rem;">Price</label>
+          <input type="number" step="any" id="price" placeholder="0.00001" required />
+        </div>
+        <button type="submit" id="submitBtn">Send Signal</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h3>Recent Signals</h3>
+      <div id="signalsTable">
+        <p class="empty">No signals yet. Submit one above.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    let API_KEY = localStorage.getItem('sf_api_key') || 'mock-api-key';
+    const signals = [];
+
+    async function fetchHealth() {
+      try {
+        const res = await fetch('/health');
+        const data = await res.json();
+        const badge = document.getElementById('systemBadge');
+        const redis = document.getElementById('redisStatus');
+        const dot = data.redisConnected
+          ? '<span class="status-dot status-healthy"></span>'
+          : '<span class="status-dot status-degraded"></span>';
+        redis.innerHTML = `${dot} ${data.redisConnected ? 'Connected' : 'Disconnected'}`;
+        document.getElementById('queueLength').textContent = data.length ?? 0;
+        document.getElementById('totalEnqueued').textContent = data.totalEnqueued ?? 0;
+        document.getElementById('totalProcessed').textContent = data.totalProcessed ?? 0;
+
+        if (data.status === 'healthy') {
+          badge.textContent = 'System Healthy';
+          badge.style.color = 'var(--accent)';
+        } else {
+          badge.textContent = 'System Degraded';
+          badge.style.color = 'var(--warn)';
+        }
+      } catch (e) {
+        document.getElementById('systemBadge').textContent = 'Unreachable';
+        document.getElementById('systemBadge').style.color = 'var(--danger)';
+      }
+    }
+
+    function showToast(msg, ok) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.className = 'toast show ' + (ok ? 'ok' : 'err');
+      setTimeout(() => t.classList.remove('show'), 3000);
+    }
+
+    function renderSignals() {
+      const container = document.getElementById('signalsTable');
+      if (signals.length === 0) {
+        container.innerHTML = '<p class="empty">No signals yet. Submit one above.</p>';
+        return;
+      }
+      const rows = signals.map(s => `
+        <tr>
+          <td class="mono">${new Date(s.ts).toLocaleTimeString()}</td>
+          <td><strong>${s.token}</strong></td>
+          <td class="action-${s.action.toLowerCase()}">${s.action}</td>
+          <td class="mono">${s.price}</td>
+          <td class="mono txhash">${s.txHash || 'pending'}</td>
+        </tr>
+      `).join('');
+      container.innerHTML = `
+        <table>
+          <thead>
+            <tr><th>Time</th><th>Token</th><th>Action</th><th>Price</th><th>Tx Hash</th></tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+    }
+
+    document.getElementById('signalForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('submitBtn');
+      btn.disabled = true;
+      btn.textContent = 'Sending...';
+
+      const payload = {
+        token: document.getElementById('token').value.trim(),
+        action: document.getElementById('action').value,
+        price: parseFloat(document.getElementById('price').value),
+      };
+
+      try {
+        const res = await fetch('/webhook?api_key=' + API_KEY, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          showToast('Signal queued!', true);
+          signals.unshift({ ...payload, ts: Date.now(), txHash: data.txHash || null });
+          if (signals.length > 20) signals.pop();
+          renderSignals();
+          fetchHealth();
+          document.getElementById('signalForm').reset();
+        } else if (res.status === 401) {
+          const newKey = prompt('Enter WEBHOOK_API_KEY:');
+          if (newKey) { API_KEY = newKey; localStorage.setItem('sf_api_key', newKey); }
+          showToast('Unauthorized — API key updated, try again', false);
+        } else {
+          showToast(data.error || 'Failed to queue signal', false);
+        }
+      } catch (err) {
+        showToast('Network error', false);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Send Signal';
+      }
+    });
+
+    // Poll health every 5s
+    fetchHealth();
+    setInterval(fetchHealth, 5000);
+  </script>
+</body>
+</html>

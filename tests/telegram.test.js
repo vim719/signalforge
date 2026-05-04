@@ -49,12 +49,21 @@ jest.mock('telegraf', () => {
   return { Telegraf, __mockBot: mockBot };
 });
 
-// Line49: Mock the queue module
+// Line 49: Mock the queue module
 jest.mock('../src/queue/redis-client', () => ({
   enqueue: jest.fn(),
   dequeue: jest.fn(),
   getQueueLength: jest.fn(),
   getQueueHealth: jest.fn(),
+  isRedisConnected: false,
+  client: {},
+}));
+
+// Mock keeperhub client
+jest.mock('../src/keeperhub/client', () => ({
+  getStatus: jest.fn().mockResolvedValue({ status: 'healthy', latency: 50 }),
+  executeSignal: jest.fn().mockResolvedValue({ success: true, txId: '0xabc123' }),
+  getBalance: jest.fn().mockResolvedValue({ balance: 1000, currency: 'USDC' }),
 }));
 
 // Line57: Import modules after mocks are set up
