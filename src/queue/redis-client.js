@@ -18,7 +18,14 @@ function getRedisConfig() {
     const encodedPass = encodeURIComponent(password);
     const url = `${protocol}://default:${encodedPass}@${host}:${port}`;
     console.log('Redis URL:', url.replace(encodedPass, '***'));
-    return { url, lazyConnect: true };
+    return {
+      url,
+      lazyConnect: true,
+      connectTimeout: 5000,
+      commandTimeout: 5000,
+      maxRetriesPerRequest: 0,
+      retryStrategy: () => null // disable auto-retry so we fail fast
+    };
   }
 
   // Local Redis
@@ -27,7 +34,11 @@ function getRedisConfig() {
     port: parseInt(port) || 6379,
     password: password || undefined,
     tls: useTls ? {} : undefined,
-    lazyConnect: true
+    lazyConnect: true,
+    connectTimeout: 5000,
+    commandTimeout: 5000,
+    maxRetriesPerRequest: 0,
+    retryStrategy: () => null
   };
 }
 
