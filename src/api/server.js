@@ -143,10 +143,10 @@ if (require.main === module) {
   console.log('Redis Password:', process.env.REDIS_PASSWORD ? 'set' : 'missing');
   console.log('Redis TLS:', process.env.REDIS_TLS || 'false (default)');
 
-  const server = app.listen(PORT, async () => {
-    console.log(`Server listening on port ${PORT}`);
+  const server = app.listen(PORT, '0.0.0.0', async () => {
+    console.log(`Server running on ${PORT}`);
     console.log('Server started successfully');
-
+    
     // Set Telegram webhook if URL is configured
     const webhookUrl = process.env.TELEGRAM_WEBHOOK_URL;
     if (webhookUrl && process.env.TELEGRAM_BOT_TOKEN) {

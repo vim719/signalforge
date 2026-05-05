@@ -1,62 +1,21 @@
-// redis-client.js — Fixed for Redis Cloud
-require('dotenv').config();
-const Redis = require('ioredis');
+// redis-client.js — Fixed for Redis Cloud (Redis Labs)
+const redis = require('redis');
 
-let isRedisConnected = false;
-let lastRedisError = null;
-
-// Build Redis config for Redis Cloud (redislabs)
-function getRedisConfig() {
-  const host = process.env.REDIS_HOST;
-  const port = process.env.REDIS_PORT;
-  const password = process.env.REDIS_PASSWORD;
-  const useTls = process.env.REDIS_TLS === 'true';
-  const protocol = useTls ? 'rediss' : 'redis';
-
-  // Redis Cloud or any remote Redis with credentials
-  if (host && port && password) {
-    const encodedPass = encodeURIComponent(password);
-    const url = `${protocol}://default:${encodedPass}@${host}:${port}`;
-    console.log('Redis URL:', url.replace(encodedPass, '***'));
-    return {
-      url,
-      lazyConnect: true,
-      connectTimeout: 5000,
-      commandTimeout: 5000,
-      maxRetriesPerRequest: 0,
-      retryStrategy: () => null // disable auto-retry so we fail fast
-    };
-  }
-
-  // Local Redis
-  return {
-    host: host || 'localhost',
-    port: parseInt(port) || 6379,
-    password: password || undefined,
-    tls: useTls ? {} : undefined,
-    lazyConnect: true,
-    connectTimeout: 5000,
-    commandTimeout: 5000,
-    maxRetriesPerRequest: 0,
-    retryStrategy: () => null
-  };
-}
-
-const client = new Redis(getRedisConfig());
+const client = redis.createClient({
+  socket: {
+    host: process.env.REDIS_HOST,
+    port: Number(process.env.REDIS_PORT),
+    tls: true // 🚨 REQUIRED for RedisLabs
+  },
+  password: process.env.REDIS_PASSWORD,
+});
 
 client.on('error', (err) => {
-  lastRedisError = err.message;
-  isRedisConnected = false;
   console.error('Redis Error:', err.message);
 });
+
 client.on('connect', () => {
-  isRedisConnected = true;
-  lastRedisError = null;
   console.log('Redis connected');
-});
-client.on('close', () => {
-  isRedisConnected = false;
-  console.log('Redis connection closed');
 });
 
 const QUEUE_KEY = 'signalforge:queue';
@@ -75,9 +34,9 @@ async function enqueue(signal, options = {}) {
     queuedAt: new Date().toISOString()
   };
   
-  await client.lpush(QUEUE_KEY, JSON.stringify(enrichedSignal));
-  await client.hset(HEALTH_KEY, 'totalEnqueued', '1', 'lastEnqueueAt', Date.now().toString());
-  
+  await client.lPush(QUEUE_KEY, JSON.stringify(enrichedSignal));
+  await client.hSet(HEALTH_KEY, 'totalEnqueued', '1', 'lastEnqueueAt', Date.now().toString());
+   
   const result = { queued: true, token: enrichedSignal.token, ...enrichedSignal };
   if (options.retry && signal.retries < (options.maxRetries || 3)) result.retryScheduled = true;
   if (signal.retries >= (options.maxRetries || 3)) result.deadLettered = true;
@@ -85,57 +44,39 @@ async function enqueue(signal, options = {}) {
 }
 
 async function dequeue() {
-  const raw = await client.rpop(QUEUE_KEY);
+  const raw = await client.rPop(QUEUE_KEY);
   if (!raw) return null;
-    
+     
   try {
     const signal = JSON.parse(raw);
-    await client.hincrby(HEALTH_KEY, 'totalProcessed', 1);
+    await client.hIncrBy(HEALTH_KEY, 'totalProcessed', 1);
     return signal;
   } catch (err) {
-    await client.lpush(DLQ_KEY, raw);
+    await client.lPush(DLQ_KEY, raw);
     return null;
   }
 }
 
 async function getQueueLength() {
-  try {
-    return await client.llen(QUEUE_KEY);
-  } catch (err) {
-    console.error('Redis getQueueLength error:', err.message);
-    return 0;
-  }
+  return await client.lLen(QUEUE_KEY);
 }
 
 async function getQueueHealth() {
-  try {
-    const raw = await client.hgetall(HEALTH_KEY);
-    const length = await getQueueLength();
-
-    let status = 'healthy';
-    if (length > 100) status = 'degraded';
-    if (length > 1000) status = 'critical';
-
-    const healthData = raw || {};
-    return {
-      length,
-      status,
-      redisConnected: isRedisConnected,
-      totalEnqueued: parseInt(healthData.totalEnqueued || '0', 10),
-      totalProcessed: parseInt(healthData.totalProcessed || '0', 10),
-      lastEnqueueAt: healthData.lastEnqueueAt ? new Date(parseInt(healthData.lastEnqueueAt, 10)).toISOString() : null
-    };
-  } catch (err) {
-    return {
-      length: 0,
-      status: 'degraded',
-      redisConnected: false,
-      redisError: err.message,
-      totalEnqueued: 0,
-      totalProcessed: 0,
-      lastEnqueueAt: null
-    };
-  }
+  const raw = await client.hGetAll(HEALTH_KEY);
+  const length = await getQueueLength();
+     
+  let status = 'healthy';
+  if (length > 100) status = 'degraded';
+  if (length > 1000) status = 'critical';
+     
+  const healthData = raw || {};
+  return {
+    length,
+    status,
+    totalEnqueued: parseInt(healthData.totalEnqueued || '0', 10),
+    totalProcessed: parseInt(healthData.totalProcessed || '0', 10),
+    lastEnqueueAt: healthData.lastEnqueueAt ? new Date(parseInt(healthData.lastEnqueueAt, 10)).toISOString() : null
+  };
 }
 
-module.exports = { enqueue, dequeue, getQueueLength, getQueueHealth, client, isRedisConnected };
+module.exports = { enqueue, dequeue, getQueueLength, getQueueHealth };
